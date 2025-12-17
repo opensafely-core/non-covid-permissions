@@ -219,3 +219,6 @@ __marimo__/
 /projects_7_months.csv
 /projects_8_months.csv
 /projects_9_months.csv
+
+jobserver.dump
+os-tpp-database-source-of-tables.csv

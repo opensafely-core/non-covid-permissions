@@ -1,0 +1,7 @@
+# GitHub PAT <add more info about how to get the token here>
+GH_ACCESS_TOKEN=token
+
+# Note: this assumes docker dev db. You will need to change it if you want to
+# point another postgres. 
+# This should match what is in <insert link to dotenv-sample in jobserver>
+DATABASE_URL=postgres://user:pass@localhost:6543/jobserver
