@@ -3,22 +3,23 @@ import os
 
 import psycopg2 as pg
 import requests
-from django.core.management.base import BaseCommand
 from dotenv import load_dotenv
 from psycopg2.extras import RealDictCursor
 
 
 # TODO: Write a just recipe which will get the latest jobserver.dump every tiime the script is run and the run just docker/restore-db so it rebuilds the docker container with the latest db
 
-# TODO: move these to a .env file in new repo
-HOSTNAME = "localhost"
-DATABASE = "jobserver"
-USERNAME = "user"
-PASSWORD = "pass"
-PORT = "6543"
-
 load_dotenv()
-SEARCH_API_TOKEN = os.getenv("SEARCH_API_TOKEN")
+
+HOSTNAME = os.getenv("HOSTNAME")
+# breakpoint()
+DATABASE = os.getenv("DATABASE")
+USERNAME = os.getenv("USERNAME")
+PASSWORD = os.getenv("PASSWORD")
+PORT = os.getenv("PORT")
+
+
+API_TOKEN = os.getenv("GH_ACCESS_TOKEN")
 
 conn = pg.connect(
     host=HOSTNAME, user=USERNAME, password=PASSWORD, dbname=DATABASE, port=PORT
@@ -56,7 +57,7 @@ def get_branch_url(repo_url, repo_branch):
     url = f"https://api.github.com/repos/{org_repo}/branches"
     response = requests.get(
         url,
-        headers={"Authorization": f"token {SEARCH_API_TOKEN}"},
+        headers={"Authorization": f"token {API_TOKEN}"},
     )
     if response.status_code != 200:
         raise Exception(f"GitHub returned an error {response.status_code}")
@@ -75,7 +76,7 @@ def get_branch_url(repo_url, repo_branch):
 def get_files_from_trees(repo_tree_url):
     response = requests.get(
         repo_tree_url,
-        headers={"Authorization": f"token {SEARCH_API_TOKEN}"},
+        headers={"Authorization": f"token {API_TOKEN}"},
     )
     if response.status_code != 200:
         raise Exception(f"GitHub returned an error {response.status_code}")
@@ -95,7 +96,7 @@ def get_tables_from_file_content(repo_url, repo_branch, python_files_in_repo):
         file_url = f"https://raw.githubusercontent.com/{repo}/{branch}/{file}"
 
         response = requests.get(
-            file_url, headers={"Authorization": f"token {SEARCH_API_TOKEN}"}
+            file_url, headers={"Authorization": f"token {API_TOKEN}"}
         )
         if response.status_code != 200:
             raise Exception(f"GitHub returned an error {response.status_code}")
@@ -124,45 +125,38 @@ def get_tables(repo_url, repo_branch):
     return tpp_tables
 
 
-class Command(BaseCommand):
-    def handle(self, *args, **options):
-        def get_info_from_data():
-            yield from read_data(open_project_query)
+def get_info_from_data():
+    yield from read_data(open_project_query)
 
-        project_dict = {}
-        for i, project in enumerate(get_info_from_data()):
-            repo_url = project["Repo"]
-            repo_branch = project["Branch"]
-            tables = get_tables(repo_url, repo_branch)
 
-            project_tables = tables
+project_dict = {}
+for i, project in enumerate(get_info_from_data()):
+    repo_url = project["Repo"]
+    repo_branch = project["Branch"]
+    tables = get_tables(repo_url, repo_branch)
 
-            project_slug = project["Project Slug"]
+    project_tables = tables
 
-            with open("project_tables_mapping.txt", "a") as f:
-                f.write(
-                    f"\n\n Round {i} before gouping: \n\n{project_slug}: {project_tables}"
-                )
+    project_slug = project["Project Slug"]
 
-            existing_project = [
-                item for item in project_dict.keys() if project_slug == item
-            ]
+    with open("project_tables_mapping.txt", "a") as f:
+        f.write(f"\n\n Round {i} before gouping: \n\n{project_slug}: {project_tables}")
 
-            if project_tables and existing_project:
-                merged_tables = project_dict[existing_project[0]] | project_tables
-                project_dict[existing_project[0]] = merged_tables
+    existing_project = [item for item in project_dict.keys() if project_slug == item]
 
-            elif not project_tables and existing_project:
-                with open("project_tables_mapping.txt", "a") as f:
-                    f.write(
-                        f"\n\nround {i} existing name but no tables: \n\n{project_dict}"
-                    )
-                continue
-            else:
-                project_dict[project_slug] = project_tables
+    if project_tables and existing_project:
+        merged_tables = project_dict[existing_project[0]] | project_tables
+        project_dict[existing_project[0]] = merged_tables
 
-            with open("project_tables_mapping.txt", "a") as f:
-                f.write(f"\n\nround {i} after grouping: \n\n{project_dict}")
-
+    elif not project_tables and existing_project:
         with open("project_tables_mapping.txt", "a") as f:
-            f.write(f"\n\nFull project-tables mapping: \n\n{project_dict}")
+            f.write(f"\n\nround {i} existing name but no tables: \n\n{project_dict}")
+        continue
+    else:
+        project_dict[project_slug] = project_tables
+
+    with open("project_tables_mapping.txt", "a") as f:
+        f.write(f"\n\nround {i} after grouping: \n\n{project_dict}")
+
+with open("project_tables_mapping.txt", "a") as f:
+    f.write(f"\n\nFull project-tables mapping: \n\n{project_dict}")
