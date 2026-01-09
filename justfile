@@ -18,7 +18,7 @@ _dotenv:
 # Install and upgrade requirements into venv without removing extraneous packages
 devenv: _dotenv
     uv pip install --upgrade -r requirements.txt
-  
+
 format *args:
     uv run ruff format --diff --quiet "$@"
 
@@ -66,5 +66,3 @@ check: devenv
       echo -e "\e[0m"
       exit 1
     fi
-
-

@@ -2,7 +2,7 @@ import ast
 import os
 
 # TODO: write code for passing argument into script run command (the file arg passed shoulg go into the gitignore)
-import argparse
+# import argparse
 
 import csv
 
@@ -13,7 +13,9 @@ from psycopg2.extras import RealDictCursor
 
 load_dotenv()
 
-DATABASE_CONNECTION_URL = os.getenv("DATABASE_URL", "postgres://user:pass@localhost:6543/jobserver")
+DATABASE_CONNECTION_URL = os.getenv(
+    "DATABASE_URL", "postgres://user:pass@localhost:6543/jobserver"
+)
 
 API_TOKEN = os.getenv("GH_ACCESS_TOKEN")
 
@@ -106,8 +108,7 @@ def get_tables_from_file_content(repo_url, repo_branch, python_files_in_repo):
         for table in tables:
             ehrql_tables.add(table)
 
-    if ehrql_tables:
-        return ehrql_tables
+    return ehrql_tables
 
 
 def get_tables(repo_url, repo_branch):
@@ -122,11 +123,11 @@ def get_tables(repo_url, repo_branch):
 def get_info_from_data():
     yield from read_data(open_project_query)
 
+
 # Dictionary containing a mapping of projects with their tables
 def get_project_and_tables():
-    
     project_dict = {}
-    for i, project in enumerate(get_info_from_data()):
+    for project in get_info_from_data():
         repo_url = project["Repo"]
         repo_branch = project["Branch"]
         tables = get_tables(repo_url, repo_branch)
@@ -135,76 +136,75 @@ def get_project_and_tables():
 
         project_slug = project["Project Slug"]
 
-        # with open("project_tables_mapping.txt", "a") as f:
-        #     f.write(f"\n\n Round {i} before gouping: \n\n{project_slug}: {project_tables}")
-
-        existing_project = [item for item in project_dict.keys() if project_slug == item]
+        existing_project = [
+            item for item in project_dict.keys() if project_slug == item
+        ]
 
         if project_tables and existing_project:
             merged_tables = project_dict[existing_project[0]] | project_tables
             project_dict[existing_project[0]] = merged_tables
 
         elif not project_tables and existing_project:
-            # with open("project_tables_mapping.txt", "a") as f:
-            #     f.write(f"\n\nround {i} existing name but no tables: \n\n{project_dict}")
             continue
         else:
             project_dict[project_slug] = project_tables
 
-        # with open("project_tables_mapping.txt", "a") as f:
-        #     f.write(f"\n\nround {i} after grouping: \n\n{project_dict}")
+    return project_dict
 
-    # TODO: if file exists but is not empty, create a copy
 
-    # Generates a file showing project-table mapping
-    # with open("full_project_tables_mapping.txt", "w") as f:
-    #     f.write(f"\n\nFull project-tables mapping: \n\n{project_dict}")
-    
-    yield from project_dict
-
-# breakpoint()
 # Read full csv file and extract tables
 # TODO: convert this to a function that takes the input file name/path as an argument for reproducibility. It should also end with .csv
 def get_eligible_tables(input_file):
     # input_file is the filename when the csv is stored in the same directory or the filepath when it is stored elsewhere in the system
-    with open("tpp_table_extract.csv", "w") as output_table, open(input_file) as full_source_table:
+    with (
+        open("tpp_table_extract.csv", "w") as output_table,
+        open(input_file) as full_source_table,
+    ):
         fieldnames = ["Table", "Eligible under new direction? (NHSE)"]
         reader = csv.DictReader(full_source_table)
         writer = csv.DictWriter(output_table, fieldnames=fieldnames)
         writer.writeheader()
         for row in reader:
-            writer.writerow({"Table": row["Table"].lower(), "Eligible under new direction? (NHSE)": row["Eligible under new direction? (NHSE)"].lower()})
+            writer.writerow(
+                {
+                    "Table": row["Table"].lower(),
+                    "Eligible under new direction? (NHSE)": row[
+                        "Eligible under new direction? (NHSE)"
+                    ].lower(),
+                }
+            )
 
-get_eligible_tables("os-tpp-database-source-of-tables.csv")
 
-# TODO: pass the result of the above function so that reading the file is not repeated. using yield to generate each line? 
+# get_eligible_tables("os-tpp-database-source-of-tables.csv")
+
+
+# TODO: pass the result of the above function so that reading the file is not repeated. using yield to generate each line?
 # Filter extracted tables
 def filter_tables():
+    # Filter out tables that are not allowed under non-COVID directions
     with open("tpp_table_extract.csv", "r") as tables_file:
         reader = csv.DictReader(tables_file)
-        # reader.next() # to skip the header row (is this necessary)
-        collected_tables = [row["Table"] for row in reader] # tables in the tpp spreadsheet
-    
-    # print(collected_tables)
+        collected_tables = [
+            row["Table"]
+            for row in reader
+            if row["Eligible under new direction? (NHSE)"] == "no"
+        ]
+
+        print(collected_tables)
 
     full_project_table_mapping = get_project_and_tables()
-
-    # breakpoint()
-    # new_project_dict = {}
-    for project, table in full_project_table_mapping:
-        breakpoint()
-        for item in project.values():
-            if item not in collected_tables:
-                project.values().remove(item)
     breakpoint()
-        # print(item)
 
-    # print(full_project_table_mapping)
+    for project, tables in full_project_table_mapping.items():
+        filtered_tables = {table for table in tables if table in collected_tables}
 
-print(filter_tables())  
+        full_project_table_mapping[project] = filtered_tables
+
+    return {
+        project: tables
+        for (project, tables) in full_project_table_mapping.items()
+        if tables
+    }
 
 
-
-
-
-        
+print(filter_tables())
