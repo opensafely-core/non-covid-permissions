@@ -1,7 +1,6 @@
 import ast
 import os
 
-# TODO: write code for passing argument (file name/path & number of months) into script run command (the file arg passed should go into the gitignore)
 import argparse
 
 import csv
@@ -21,15 +20,18 @@ API_TOKEN = os.getenv("GH_ACCESS_TOKEN")
 
 conn = pg.connect(DATABASE_CONNECTION_URL)
 
-# This query finds the project, workspace, and repo information for workspaces that have a job that ran in the last three months
-open_project_query = """
-        SELECT DISTINCT w.name AS "Workspace Name", p.id AS "Project ID", p.slug AS "Project Slug", p.status AS "Project Status", w.branch AS "Branch", r.url AS "Repo"
-        FROM jobserver_workspace AS w
-        INNER JOIN jobserver_project AS p ON (p.id = w.project_id)
-        INNER JOIN jobserver_repo AS r ON (r.id = w.repo_id)
-        INNER JOIN jobserver_jobrequest AS jr ON (w.id = jr.workspace_id)
-        WHERE jr.created_at >= date_trunc('month', CURRENT_DATE - interval '6' MONTH)
-        """
+
+def get_db_query(months):
+    # Finds the project, workspace, and repo information for workspaces with jobs run in the last N months
+    open_project_query = f"""
+            SELECT DISTINCT w.name AS "Workspace Name", p.id AS "Project ID", p.slug AS "Project Slug", p.status AS "Project Status", w.branch AS "Branch", r.url AS "Repo"
+            FROM jobserver_workspace AS w
+            INNER JOIN jobserver_project AS p ON (p.id = w.project_id)
+            INNER JOIN jobserver_repo AS r ON (r.id = w.repo_id)
+            INNER JOIN jobserver_jobrequest AS jr ON (w.id = jr.workspace_id)
+            WHERE jr.created_at >= date_trunc('month', CURRENT_DATE - interval '{months}' MONTH)
+            """
+    return open_project_query
 
 
 def read_data(query):
@@ -102,8 +104,21 @@ def get_tables_from_file_content(repo_url, repo_branch, python_files_in_repo):
 
         tables = []
         for node in ast.walk(ast_tree):
-            if isinstance(node, ast.ImportFrom) and node.module == "ehrql.tables.tpp":
-                tables.extend(alias.name for alias in node.names)
+            if isinstance(node, ast.ImportFrom):
+                if node.module == "ehrql.tables.tpp":
+                    tables.extend(alias.name for alias in node.names)
+
+                elif node.module == "ehrql.tables.raw.tpp":
+                    tables.extend(alias.name for alias in node.names)
+
+                # Check for: from ehrql.table import tpp
+                # (This imports the tpp module itself, not specific tables)
+                elif node.module == "ehrql.table":
+                    for alias in node.names:
+                        if alias.name == "tpp":
+                            # Handle this case - you might want to track it differently
+                            # since it's importing the module rather than specific tables
+                            pass
 
         for table in tables:
             ehrql_tables.add(table)
@@ -120,14 +135,15 @@ def get_tables(repo_url, repo_branch):
     return tpp_tables
 
 
-def get_info_from_data():
-    yield from read_data(open_project_query)
+def get_info_from_data(number_of_months):
+    query = get_db_query(number_of_months)
+    yield from read_data(query)
 
 
 # Dictionary containing a mapping of projects with their tables
-def get_project_and_tables():
+def get_project_and_tables(number_of_months):
     project_dict = {}
-    for project in get_info_from_data():
+    for project in get_info_from_data(number_of_months):
         repo_url = project["Repo"]
         repo_branch = project["Branch"]
         tables = get_tables(repo_url, repo_branch)
@@ -153,9 +169,7 @@ def get_project_and_tables():
 
 
 # Read full csv file and extract tables
-# TODO: convert this to a function that takes the input file name/path as an argument for reproducibility. It should also end with .csv
 def get_tpp_schema_tables(input_file):
-    # input_file is the filename when the csv is stored in the same directory or the filepath when it is stored elsewhere in the system
     output_file = "tpp_table_extract.csv"
     with (
         open(output_file, "w") as output_table,
@@ -208,17 +222,13 @@ def map_ineligible_tpp_tables_to_ehrql_format(input_file):
     return list(ineligible_ehrql_tables.keys())
 
 
-# TODO: pass the result of the above function so that reading the file is not repeated. using yield to generate each line?
-# TODO: rename the filter_tables() function to something more appropriate like filter_projects?
-# Filter extracted tables
-def filter_tables(input_file):
-    # TODO: rewrite this comment
+def filter_tables(input_file, number_of_months):
     # Filter out tables that are not allowed under non-COVID directions, after mapping tables in the TPP schema to ehrql tables
     ehrql_tables_that_need_permission = map_ineligible_tpp_tables_to_ehrql_format(
         input_file
     )
 
-    full_project_table_mapping = get_project_and_tables()
+    full_project_table_mapping = get_project_and_tables(number_of_months)
 
     for project, tables in full_project_table_mapping.items():
         filtered_tables = {
@@ -234,9 +244,9 @@ def filter_tables(input_file):
     }
 
 
-def generate_output_file(input_file):
-    projects_with_non_covid_restrictions = filter_tables(input_file)
-    output_file = "project_permissions_6_months_with_mapping.csv"
+def generate_output_file(input_file, number_of_months):
+    projects_with_non_covid_restrictions = filter_tables(input_file, number_of_months)
+    output_file = f"project_permissions_{number_of_months}_months.csv"
     with open(output_file, "w") as output_file:
         fieldnames = ["Project", "Tables"]
         writer = csv.DictWriter(output_file, fieldnames=fieldnames)
@@ -249,18 +259,31 @@ def generate_output_file(input_file):
                 }
             )
 
-    print("Results written to: project_permissions_6_months_with_mapping.csv")
+    print(f"Results written to: project_permissions_{number_of_months}_months.csv")
     return output_file
 
 
-# TODO: add argument file validation code
+# TODO: add argument file validation code with tests as well
+
 
 def run():
     parser = argparse.ArgumentParser()
-    parser.add_argument("input_file", type=str)
+    parser.add_argument(
+        "input_file",
+        type=str,
+        help="Filepath to the downloaded csv (see setup instructions in README.md)",
+    )
+    parser.add_argument(
+        "number_of_months",
+        type=int,
+        nargs="?",
+        default=6,
+        help="Last N months to query the database which starts from the first day of the earliest month",
+    )
     args = parser.parse_args()
 
-    generate_output_file(args.input_file)
+    generate_output_file(args.input_file, args.number_of_months)
+
 
 if __name__ == "__main__":
     run()

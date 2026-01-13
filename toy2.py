@@ -72,9 +72,8 @@ python_files_in_repo = get_files_from_trees(workspace_tree_url)
 print(python_files_in_repo)
 tpp_tables = get_tables_from_file_content(repo_url, repo_branch, python_files_in_repo)
 tables = get_tables(repo_url, repo_branch)
-# breakpoint()
 project_dict = get_project_and_tables(repo_url, repo_branch, project_slug)
 resulting_dict = filter_tables(project_dict)
 
-breakpoint()
+
 print(tpp_tables)

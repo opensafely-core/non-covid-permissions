@@ -1,6 +1,6 @@
 Project,Tables
 incidence-and-management-of-inflammatory-rheumatic-diseases-before-during-and-after-the-covid-19-pandemic,"{'wl_openpathways', 'wl_clockstops'}"
-implications-of-metformin-for-long-covid,"{'occupation_on_covid_vaccine_record', 'sgss_covid_all_tests'}"
-investigating-events-following-covid-19,"{'occupation_on_covid_vaccine_record', 'sgss_covid_all_tests'}"
+implications-of-metformin-for-long-covid,"{'sgss_covid_all_tests', 'occupation_on_covid_vaccine_record'}"
+investigating-events-following-covid-19,"{'sgss_covid_all_tests', 'occupation_on_covid_vaccine_record'}"
 effectiveness-and-safety-of-covid-19-treatments-for-hospitalised-patients,"{'covid_therapeutics', 'sgss_covid_all_tests'}"
-impact-and-inequalities-of-winter-pressures-in-primary-care-providing-the-evidence-base-for-mitigation-strategies,"{'occupation_on_covid_vaccine_record', 'sgss_covid_all_tests'}"
+impact-and-inequalities-of-winter-pressures-in-primary-care-providing-the-evidence-base-for-mitigation-strategies,"{'sgss_covid_all_tests', 'occupation_on_covid_vaccine_record'}"

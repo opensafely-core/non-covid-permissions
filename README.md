@@ -8,14 +8,30 @@ Follow the instructions in job-server to get a copy of the database and get a do
 Create a .env file using `just devenv` 
 
 ## Accessing the GitHub API
-Parts of this script requires access to the GitHub API. In Github <insert instructions here>. Copy the token from GitHub and in the .env file created, for the
-GH_ACCESS_TOKEN variable, replace 'token' with the copied token.
+Parts of this script requires access to the GitHub API. In Github, generate a PAT. Copy the token from GitHub and in the .env file created, replace the placeholder token for GH_ACCESS_TOKEN, with the copied token.
 
 ## Getting the TPP tables data
-Members of datalab.org have access to the data in the shared drive here: <insert file link>. 
+Members of datalab.org have access to the data in the shared drive [here](https://docs.google.com/spreadsheets/d/1zT5YKjOap0fzSwGztQwM9y2JeJ3MnMYsGerb1_qYw3s/edit?gid=0#gid=0)
 
 Downlad a copy to your local machine in csv format. Save it in an easily accesible directory
 
 ## Running the script
-To run the script:
-`python3 permissions_script.py <path-csv-file>`
+
+### Basic usage
+```sh
+python3 permissions_script.py <path-to-csv-file>
+```
+
+By default the script runs using data from the last six months 
+
+### Specify a custom time period
+```sh
+python3 permissions_script.py <path-to-csv-file> <number-of-months>
+``` 
+
+`<number-of-months>` is an integer
+
+### Get help running the script
+```sh
+python3 permissions_script.py -h
+```
