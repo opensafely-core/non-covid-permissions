@@ -28,7 +28,7 @@ open_project_query = """
         INNER JOIN jobserver_project AS p ON (p.id = w.project_id)
         INNER JOIN jobserver_repo AS r ON (r.id = w.repo_id)
         INNER JOIN jobserver_jobrequest AS jr ON (w.id = jr.workspace_id)
-        WHERE jr.created_at >= date_trunc('month', CURRENT_DATE - interval '3' MONTH)
+        WHERE jr.created_at >= date_trunc('month', CURRENT_DATE - interval '6' MONTH)
         """
 
 
@@ -181,19 +181,14 @@ def get_eligible_tables(input_file):
 # TODO: pass the result of the above function so that reading the file is not repeated. using yield to generate each line?
 # Filter extracted tables
 def filter_tables():
-    # Filter out tables that are not allowed under non-COVID directions
-    with open("tpp_table_extract.csv", "r") as tables_file:
+    # Filter out tables that are not allowed under non-COVID directions, after mapping tables in the TPP schema to ehrql tables
+    with open("tpp_ehrql_mapping.csv", "r") as tables_file:
         reader = csv.DictReader(tables_file)
-        collected_tables = [
-            row["Table"]
-            for row in reader
-            if row["Eligible under new direction? (NHSE)"] == "no"
-        ]
+        collected_tables = [row["ehrql_format"] for row in reader]
 
         print(collected_tables)
 
     full_project_table_mapping = get_project_and_tables()
-    breakpoint()
 
     for project, tables in full_project_table_mapping.items():
         filtered_tables = {table for table in tables if table in collected_tables}
@@ -207,4 +202,19 @@ def filter_tables():
     }
 
 
-print(filter_tables())
+def display_output():
+    projects_with_non_covid_restrictions = filter_tables()
+    with open("project_permissions_6_months_with_mapping.csv", "w") as output_file:
+        fieldnames = ["Project", "Tables"]
+        writer = csv.DictWriter(output_file, fieldnames=fieldnames)
+        writer.writeheader()
+        for project, table in projects_with_non_covid_restrictions.items():
+            writer.writerow(
+                {
+                    "Project": project,
+                    "Tables": table,
+                }
+            )
+
+
+print(display_output())
