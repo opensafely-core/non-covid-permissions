@@ -1,7 +1,7 @@
 import ast
 import os
 
-# TODO: write code for passing argument into script run command (the file arg passed shoulg go into the gitignore)
+# TODO: write code for passing argument (file name/path & number of months) into script run command (the file arg passed should go into the gitignore)
 # import argparse
 
 import csv
@@ -154,10 +154,12 @@ def get_project_and_tables():
 
 # Read full csv file and extract tables
 # TODO: convert this to a function that takes the input file name/path as an argument for reproducibility. It should also end with .csv
-def get_eligible_tables(input_file):
+def get_tpp_schema_tables(input_file):
     # input_file is the filename when the csv is stored in the same directory or the filepath when it is stored elsewhere in the system
+
+    output_file = "tpp_table_extract.csv"
     with (
-        open("tpp_table_extract.csv", "w") as output_table,
+        open(output_file, "w") as output_table,
         open(input_file) as full_source_table,
     ):
         fieldnames = ["Table", "Eligible under new direction? (NHSE)"]
@@ -173,25 +175,56 @@ def get_eligible_tables(input_file):
                     ].lower(),
                 }
             )
+    return output_file
 
 
-# get_eligible_tables("os-tpp-database-source-of-tables.csv")
+def map_ineligible_tpp_tables_to_ehrql_format(input_file):
+    input = get_tpp_schema_tables(input_file)
+    with open(input, "r") as tpp_tables_file:
+        reader = csv.DictReader(tpp_tables_file)
+
+        # Filter out tables that are not allowed under non-COVID directions
+        ineligible_tpp_tables = {
+            row["Table"]: row["Eligible under new direction? (NHSE)"]
+            for row in reader
+            if row["Eligible under new direction? (NHSE)"] == "no"
+        }
+
+    # Map tpp tables names to their ehrql tables names where applicable. The opensafely docs has a list of ehrql tables: https://docs.opensafely.org/ehrql/reference/cheatsheet/#tables
+    tpp_to_ehrql = {
+        "openprompt": "open_prompt",
+        "healthcareworker": "occupation_on_covid_vaccine_record",
+        "sgss_alltests_negative": "sgss_covid_all_tests",
+        "sgss_alltests_positive": "sgss_covid_all_tests",
+        "sgss_negative": "sgss_covid_all_tests",
+        "sgss_positive": "sgss_covid_all_tests",
+        "therapeutics": "covid_therapeutics",
+    }
+
+    ineligible_ehrql_tables = {
+        tpp_to_ehrql.get(tpp_name, tpp_name): eligibility
+        for tpp_name, eligibility in ineligible_tpp_tables.items()
+    }
+
+    return list(ineligible_ehrql_tables.keys())
 
 
 # TODO: pass the result of the above function so that reading the file is not repeated. using yield to generate each line?
+# TODO: rename the filter_tables() function to something more appropriate like filter_projects?
 # Filter extracted tables
-def filter_tables():
+def filter_tables(input_file):
+    # TODO: rewrite this comment
     # Filter out tables that are not allowed under non-COVID directions, after mapping tables in the TPP schema to ehrql tables
-    with open("tpp_ehrql_mapping.csv", "r") as tables_file:
-        reader = csv.DictReader(tables_file)
-        collected_tables = [row["ehrql_format"] for row in reader]
-
-        print(collected_tables)
+    ehrql_tables_that_need_permission = map_ineligible_tpp_tables_to_ehrql_format(
+        input_file
+    )
 
     full_project_table_mapping = get_project_and_tables()
 
     for project, tables in full_project_table_mapping.items():
-        filtered_tables = {table for table in tables if table in collected_tables}
+        filtered_tables = {
+            table for table in tables if table in ehrql_tables_that_need_permission
+        }
 
         full_project_table_mapping[project] = filtered_tables
 
@@ -202,9 +235,10 @@ def filter_tables():
     }
 
 
-def display_output():
-    projects_with_non_covid_restrictions = filter_tables()
-    with open("project_permissions_6_months_with_mapping.csv", "w") as output_file:
+def generate_output_file(input_file):
+    projects_with_non_covid_restrictions = filter_tables(input_file)
+    output_file = "project_permissions_6_months_with_mapping.csv"
+    with open(output_file, "w") as output_file:
         fieldnames = ["Project", "Tables"]
         writer = csv.DictWriter(output_file, fieldnames=fieldnames)
         writer.writeheader()
@@ -216,5 +250,9 @@ def display_output():
                 }
             )
 
+    print("Results written to: project_permissions_6_months_with_mapping.csv")
+    return output_file
 
-print(display_output())
+
+# TODO: add file validation code
+print(generate_output_file("os-tpp-database-source-of-tables.csv"))
