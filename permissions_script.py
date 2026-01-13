@@ -2,7 +2,7 @@ import ast
 import os
 
 # TODO: write code for passing argument (file name/path & number of months) into script run command (the file arg passed should go into the gitignore)
-# import argparse
+import argparse
 
 import csv
 
@@ -156,7 +156,6 @@ def get_project_and_tables():
 # TODO: convert this to a function that takes the input file name/path as an argument for reproducibility. It should also end with .csv
 def get_tpp_schema_tables(input_file):
     # input_file is the filename when the csv is stored in the same directory or the filepath when it is stored elsewhere in the system
-
     output_file = "tpp_table_extract.csv"
     with (
         open(output_file, "w") as output_table,
@@ -254,5 +253,14 @@ def generate_output_file(input_file):
     return output_file
 
 
-# TODO: add file validation code
-print(generate_output_file("os-tpp-database-source-of-tables.csv"))
+# TODO: add argument file validation code
+
+def run():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("input_file", type=str)
+    args = parser.parse_args()
+
+    generate_output_file(args.input_file)
+
+if __name__ == "__main__":
+    run()
