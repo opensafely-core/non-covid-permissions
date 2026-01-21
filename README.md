@@ -26,10 +26,17 @@ By default the script runs using data from the last six months
 
 ### Specify a custom time period
 ```sh
-python3 permissions_script.py <path-to-csv-file> <number-of-months>
+python3 permissions_script.py <path-to-csv-file> -n <number-of-months>
 ``` 
 
 `<number-of-months>` is an integer
+
+### Get the tables for a single workspace
+```sh
+python3 permissions_script.py <path-to-csv-file> -n <number-of-months> -w <workspace-name>
+``` 
+
+`<workspace-name>` gotten from job-server
 
 ### Get help running the script
 ```sh

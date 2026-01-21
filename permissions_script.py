@@ -9,6 +9,7 @@ import psycopg2 as pg
 import requests
 from dotenv import load_dotenv
 from psycopg2.extras import RealDictCursor
+from dataclasses import dataclass
 
 load_dotenv()
 
@@ -21,16 +22,20 @@ API_TOKEN = os.getenv("GH_ACCESS_TOKEN")
 conn = pg.connect(DATABASE_CONNECTION_URL)
 
 
-def get_db_query(months):
+def get_db_query(params):
     # Finds the project, workspace, and repo information for workspaces with jobs run in the last N months
     open_project_query = f"""
-            SELECT DISTINCT w.name AS "Workspace Name", p.id AS "Project ID", p.slug AS "Project Slug", p.status AS "Project Status", w.branch AS "Branch", r.url AS "Repo"
-            FROM jobserver_workspace AS w
-            INNER JOIN jobserver_project AS p ON (p.id = w.project_id)
-            INNER JOIN jobserver_repo AS r ON (r.id = w.repo_id)
-            INNER JOIN jobserver_jobrequest AS jr ON (w.id = jr.workspace_id)
-            WHERE jr.created_at >= date_trunc('month', CURRENT_DATE - interval '{months}' MONTH)
-            """
+                SELECT DISTINCT w.name AS "Workspace Name", p.id AS "Project ID", p.slug AS "Project Slug", p.status AS "Project Status", w.branch AS "Branch", r.url AS "Repo"
+                FROM jobserver_workspace AS w
+                INNER JOIN jobserver_project AS p ON (p.id = w.project_id)
+                INNER JOIN jobserver_repo AS r ON (r.id = w.repo_id)
+                INNER JOIN jobserver_jobrequest AS jr ON (w.id = jr.workspace_id)
+                WHERE jr.created_at >= date_trunc('month', CURRENT_DATE - interval '{params.no_of_months}' MONTH) 
+                """
+
+    if params.workspace_name:
+        open_project_query += f"AND w.name = '{params.workspace_name}'"
+
     return open_project_query
 
 
@@ -135,15 +140,15 @@ def get_tables(repo_url, repo_branch):
     return tpp_tables
 
 
-def get_info_from_data(number_of_months):
-    query = get_db_query(number_of_months)
+def get_info_from_data(params):
+    query = get_db_query(params)
     yield from read_data(query)
 
 
 # Dictionary containing a mapping of projects with their tables
-def get_project_and_tables(number_of_months):
+def get_project_and_tables(params):
     project_dict = {}
-    for project in get_info_from_data(number_of_months):
+    for project in get_info_from_data(params):
         repo_url = project["Repo"]
         repo_branch = project["Branch"]
         tables = get_tables(repo_url, repo_branch)
@@ -231,13 +236,13 @@ def map_ineligible_tpp_tables_to_ehrql_format(input_file):
     return list(ineligible_ehrql_tables.keys())
 
 
-def filter_tables(input_file, number_of_months):
+def filter_tables(params):
     # Filter out tables that are not allowed under non-COVID directions, after mapping tables in the TPP schema to ehrql tables
     ehrql_tables_that_need_permission = map_ineligible_tpp_tables_to_ehrql_format(
-        input_file
+        params.input_file
     )
 
-    full_project_table_mapping = get_project_and_tables(number_of_months)
+    full_project_table_mapping = get_project_and_tables(params)
 
     for project, tables in full_project_table_mapping.items():
         filtered_tables = {
@@ -253,10 +258,10 @@ def filter_tables(input_file, number_of_months):
     }
 
 
-def generate_output_file(input_file, number_of_months):
-    validate_input_file(input_file)
-    projects_with_non_covid_restrictions = filter_tables(input_file, number_of_months)
-    output_file = f"project_permissions_{number_of_months}_months.csv"
+def generate_output_file(params):
+    validate_input_file(params.input_file)
+    projects_with_non_covid_restrictions = filter_tables(params)
+    output_file = f"project_permissions_{params.no_of_months}_months.csv"
     with open(output_file, "w") as output_file:
         fieldnames = ["Project", "Tables"]
         writer = csv.DictWriter(output_file, fieldnames=fieldnames)
@@ -269,8 +274,15 @@ def generate_output_file(input_file, number_of_months):
                 }
             )
 
-    print(f"Results written to: project_permissions_{number_of_months}_months.csv")
+    print(f"Results written to: project_permissions_{params.no_of_months}_months.csv")
     return output_file
+
+
+@dataclass
+class QueryParams:
+    input_file: str
+    no_of_months: int
+    workspace_name: str
 
 
 def run():
@@ -281,15 +293,24 @@ def run():
         help="Filepath to the downloaded csv (see setup instructions in README.md)",
     )
     parser.add_argument(
-        "number_of_months",
+        "-n",
+        "--number_of_months",
         type=int,
         nargs="?",
         default=6,
         help="Last N months to query the database which starts from the first day of the earliest month",
     )
+    parser.add_argument(
+        "-w",
+        "--workspace_name",
+        type=str,
+        nargs="?",
+        help="Workspace name for single workspace to analyse",
+    )
     args = parser.parse_args()
 
-    generate_output_file(args.input_file, args.number_of_months)
+    params = QueryParams(args.input_file, args.number_of_months, args.workspace_name)
+    generate_output_file(params)
 
 
 if __name__ == "__main__":
