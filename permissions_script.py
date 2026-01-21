@@ -168,6 +168,15 @@ def get_project_and_tables(number_of_months):
     return project_dict
 
 
+def validate_input_file(input_file):
+    # input_file is the filename when the csv is stored in the same directory or the filepath when it is stored
+    # elsewhere in the system
+    if not input_file.endswith(".csv"):
+        raise ValueError(f"File {input_file} must be in csv format")
+    if not os.path.exists(input_file):
+        raise FileNotFoundError(f"File not found: {input_file}")
+
+
 # Read full csv file and extract tables
 def get_tpp_schema_tables(input_file):
     output_file = "tpp_table_extract.csv"
@@ -245,6 +254,7 @@ def filter_tables(input_file, number_of_months):
 
 
 def generate_output_file(input_file, number_of_months):
+    validate_input_file(input_file)
     projects_with_non_covid_restrictions = filter_tables(input_file, number_of_months)
     output_file = f"project_permissions_{number_of_months}_months.csv"
     with open(output_file, "w") as output_file:
@@ -261,9 +271,6 @@ def generate_output_file(input_file, number_of_months):
 
     print(f"Results written to: project_permissions_{number_of_months}_months.csv")
     return output_file
-
-
-# TODO: add argument file validation code with tests as well
 
 
 def run():
