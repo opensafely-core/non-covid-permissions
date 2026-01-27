@@ -1,0 +1,33 @@
+User,Tables
+Harry T Mason,"{'Series', 'table_from_file', 'PatientFrame'}"
+Venexia Walker,"{'Series', 'table_from_file', 'PatientFrame'}"
+Tom Ward,set()
+Simon Davy,set()
+Andrea Schaffer,set()
+Shrinkhala Dawadi,set()
+Emma Tarmey,"{'Series', 'PatientFrame', 'table_from_file'}"
+Dave Evans,set()
+Zoe (Mengxuan) Zou,"{'Series', 'table_from_file', 'PatientFrame'}"
+Mike Kelly,"{'CTV3Code', 'ICD10Code'}"
+Mark Russell,{'ICD10Code'}
+Viveck Kingsley,set()
+Richard Williams,set()
+Alex Walker,set()
+Megan Griffiths,set()
+Becky Smith,"{'CTV3Code', 'ICD10Code'}"
+Emily Eyles,"{'Series', 'table_from_file', 'PatientFrame'}"
+Jaidip Gill,set()
+Milan Wiedemann,set()
+Paolo Mazzone,set()
+Martina Pesce,set()
+Kin Quan,set()
+Alain Amstutz,"{'Series', 'CTV3Code', 'PatientFrame', 'table_from_file'}"
+Suzanne Hamilton,set()
+Zijing Yang,{'INTERVAL'}
+Providence,set()
+Em Prestige,"{'CTV3Code', 'ICD10Code'}"
+Bang Zheng,{'CTV3Code'}
+Peter Inglesby,set()
+Will Hulme,set()
+Robert Porteous,"{'Series', 'PatientFrame', 'table_from_file'}"
+Ruth Costello,"{'SNOMEDCTCode', 'CTV3Code', 'ICD10Code'}"
