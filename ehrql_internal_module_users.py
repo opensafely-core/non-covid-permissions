@@ -23,9 +23,8 @@ conn = pg.connect(DATABASE_CONNECTION_URL)
 
 
 def get_db_query(params):
-    # Finds the project, workspace, and repo information for workspaces with jobs run in the last N months
     ehrql_users = f"""
-                SELECT DISTINCT u.fullname AS "User Name", w.name AS "Workspace Name", w.branch AS "Branch", r.url AS "Repo"
+                SELECT DISTINCT u.fullname AS "User Name", u.email AS "Email", w.name AS "Workspace Name", w.branch AS "Branch", r.url AS "Repo"
                 FROM jobserver_workspace AS w
                 INNER JOIN jobserver_project AS p ON (p.id = w.project_id)
                 INNER JOIN jobserver_repo AS r ON (r.id = w.repo_id)
@@ -44,8 +43,8 @@ def read_data(query):
     # Use ReadDictCursor to return the result of the query as a dictionary
     cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute(query)
-    project_info = cursor.fetchall()
-    return project_info
+    user_info = cursor.fetchall()
+    return user_info
 
 
 def get_org_repo_name(repo_url) -> str:
@@ -91,8 +90,9 @@ def get_files_from_trees(repo_tree_url):
     return repo_py_scripts
 
 
-def get_tables_from_file_content(repo_url, repo_branch, python_files_in_repo):
-    ehrql_tables = set()
+def get_faulty_imports_from_file_content(repo_url, repo_branch, python_files_in_repo):
+    faulty_imports = set()
+    python_files_with_faulty_imports = []
 
     for file in python_files_in_repo:
         repo = get_org_repo_name(repo_url)
@@ -109,30 +109,31 @@ def get_tables_from_file_content(repo_url, repo_branch, python_files_in_repo):
         ast_tree = ast.parse(data)
 
         tables = []
-        # pattern = r"/\behrql\.[^t]/"
-        # statement = re.findall(pattern, node.module)
 
         for node in ast.walk(ast_tree):
             if isinstance(node, ast.ImportFrom):
-                if node.module.startswith("ehrql.") and not node.module.startswith(
-                    "ehrql.t"
+                if (
+                    node.module
+                    and node.module.startswith("ehrql.")
+                    and not node.module.startswith("ehrql.t")
                 ):
                     tables.extend(alias.name for alias in node.names)
+        if tables:
+            faulty_imports.update(tables)
+            python_files_with_faulty_imports.append(file)
 
-        for table in tables:
-            ehrql_tables.add(table)
+    faulty_imports_str = ", ".join(faulty_imports)
+    files_str = ", ".join(python_files_with_faulty_imports)
+    return faulty_imports_str, files_str
 
-    return ehrql_tables
 
-
-def get_tables(repo_url, repo_branch):
+def get_imports_and_files(repo_url, repo_branch):
     workspace_tree_url = get_branch_url(repo_url, repo_branch)
     python_files_in_repo = get_files_from_trees(workspace_tree_url)
-    tpp_tables = get_tables_from_file_content(
+    imports_and_files = get_faulty_imports_from_file_content(
         repo_url, repo_branch, python_files_in_repo
     )
-
-    return tpp_tables
+    return imports_and_files
 
 
 def get_info_from_data(params):
@@ -140,159 +141,101 @@ def get_info_from_data(params):
     yield from read_data(query)
 
 
-# Dictionary containing a mapping of projects with their tables
-def get_project_and_tables(params):
-    project_dict = {}
-    for project in get_info_from_data(params):
-        repo_url = project["Repo"]
-        repo_branch = project["Branch"]
-        tables = get_tables(repo_url, repo_branch)
+# Dictionary containing users that have imported from internal ehrql modules
+def get_users_and_import_info(params):
+    """Example structure:
+    users_with_internal_imports = {
+    "User_a": [
+        "user_a@gmail.com",
+        {
+            "Workspace": "death-report",
+            "File Path": "data_def.py",
+            "Faulty Imports": "INTERVAL",
+        },
+        {
+            "Workspace": "openpathology_main",
+            "File Path": "data_definition.py",
+            "Faulty Imports": "ICD10",
+        },
+    ]
+    }
+    """
+    users_with_internal_imports = {}
+    for users in get_info_from_data(params):
+        username = users["User Name"]
+        email = users["Email"]
+        repo_url = users["Repo"]
+        repo_branch = users["Branch"]
+        workspace_name = users["Workspace Name"]
+        imported_tables, files_with_imports = get_imports_and_files(
+            repo_url, repo_branch
+        )
+        imports_from_wrong_location = imported_tables
+        files_containing_wrong_imports = files_with_imports
 
-        project_tables = tables
-
-        username = project["User Name"]
-
-        existing_project = [item for item in project_dict.keys() if username == item]
-
-        if project_tables and existing_project:
-            merged_tables = project_dict[existing_project[0]] | project_tables
-            project_dict[existing_project[0]] = merged_tables
-
-        elif not project_tables and existing_project:
+        if not files_containing_wrong_imports:
             continue
+
+        import_information = {
+            "Workspace": workspace_name,
+            "File Path": files_containing_wrong_imports,
+            "Faulty Imports": imports_from_wrong_location,
+        }
+
+        if username in users_with_internal_imports.keys():
+            users_with_internal_imports[username].append(import_information)
         else:
-            project_dict[username] = project_tables
+            users_with_internal_imports[username] = [email, import_information]
 
-    return project_dict
-
-
-# return {
-#         project: tables
-#         for (project, tables) in full_project_table_mapping.items()
-#         if tables
-#     }
-
-
-# def validate_input_file(input_file):
-#     # input_file is the filename when the csv is stored in the same directory or the filepath when it is stored
-#     # elsewhere in the system
-#     if not input_file.endswith(".csv"):
-#         raise ValueError(f"File {input_file} must be in csv format")
-#     if not os.path.exists(input_file):
-#         raise FileNotFoundError(f"File not found: {input_file}")
-
-
-# Read full csv file and extract tables
-# def get_tpp_schema_tables(input_file):
-#     output_file = "tpp_table_extract.csv"
-#     with (
-#         open(output_file, "w") as output_table,
-#         open(input_file) as full_source_table,
-#     ):
-#         fieldnames = ["Table", "Eligible under new direction? (NHSE)"]
-#         reader = csv.DictReader(full_source_table)
-#         writer = csv.DictWriter(output_table, fieldnames=fieldnames)
-#         writer.writeheader()
-#         for row in reader:
-#             writer.writerow(
-#                 {
-#                     "Table": row["Table"].lower(),
-#                     "Eligible under new direction? (NHSE)": row[
-#                         "Eligible under new direction? (NHSE)"
-#                     ].lower(),
-#                 }
-#             )
-#     return output_file
-
-
-# def map_ineligible_tpp_tables_to_ehrql_format(input_file):
-#     input = get_tpp_schema_tables(input_file)
-#     with open(input, "r") as tpp_tables_file:
-#         reader = csv.DictReader(tpp_tables_file)
-
-#         # Filter out tables that are not allowed under non-COVID directions
-#         ineligible_tpp_tables = {
-#             row["Table"]: row["Eligible under new direction? (NHSE)"]
-#             for row in reader
-#             if row["Eligible under new direction? (NHSE)"] == "no"
-#         }
-
-#     # Map tpp tables names to their ehrql tables names where applicable. The opensafely docs has a list of ehrql tables: https://docs.opensafely.org/ehrql/reference/cheatsheet/#tables
-#     tpp_to_ehrql = {
-#         "openprompt": "open_prompt",
-#         "healthcareworker": "occupation_on_covid_vaccine_record",
-#         "sgss_alltests_negative": "sgss_covid_all_tests",
-#         "sgss_alltests_positive": "sgss_covid_all_tests",
-#         "sgss_negative": "sgss_covid_all_tests",
-#         "sgss_positive": "sgss_covid_all_tests",
-#         "therapeutics": "covid_therapeutics",
-#     }
-
-#     ineligible_ehrql_tables = {
-#         tpp_to_ehrql.get(tpp_name, tpp_name): eligibility
-#         for tpp_name, eligibility in ineligible_tpp_tables.items()
-#     }
-
-#     return list(ineligible_ehrql_tables.keys())
-
-
-# def filter_tables(params):
-#     # Filter out tables that are not allowed under non-COVID directions, after mapping tables in the TPP schema to ehrql tables
-#     ehrql_tables_that_need_permission = map_ineligible_tpp_tables_to_ehrql_format(
-#         params.input_file
-#     )
-
-#     full_project_table_mapping = get_project_and_tables(params)
-
-#     for project, tables in full_project_table_mapping.items():
-#         filtered_tables = {
-#             table for table in tables if table in ehrql_tables_that_need_permission
-#         }
-
-#         full_project_table_mapping[project] = filtered_tables
-
-#     return {
-#         project: tables
-#         for (project, tables) in full_project_table_mapping.items()
-#         if tables
-#     }
+    return users_with_internal_imports
 
 
 def generate_output_file(params):
-    # validate_input_file(params.input_file)
-    # projects_with_non_covid_restrictions = filter_tables(params)
-    user_dict = get_project_and_tables(params)
-    output_file = f"internal_module_users_{params.no_of_months}_months.csv"
+    user_dict = get_users_and_import_info(params)
+    output_file = f"output_files/internal_module_users_{params.no_of_months}_months.csv"
     with open(output_file, "w") as output_file:
-        fieldnames = ["User", "Tables"]
+        fieldnames = [
+            "User",
+            "Email",
+            "Workspace",
+            "Python File with Issue",
+            "Faulty Imports",
+        ]
         writer = csv.DictWriter(output_file, fieldnames=fieldnames)
         writer.writeheader()
-        for user, table in user_dict.items():
-            writer.writerow(
-                {
-                    "User": user,
-                    "Tables": table,
-                }
-            )
+        for name, import_info in user_dict.items():
+            for item in import_info:
+                if not isinstance(item, dict):
+                    email = item
+                else:
+                    workspace = item["Workspace"]
+                    file = item["File Path"]
+                    imports = item["Faulty Imports"]
+                    writer.writerow(
+                        {
+                            "User": name,
+                            "Email": email,
+                            "Workspace": workspace,
+                            "Python File with Issue": file,
+                            "Faulty Imports": imports,
+                        }
+                    )
 
-    print(f"Results written to: internal_module_users_{params.no_of_months}_months.csv")
+    print(
+        f"Results written to: output_files/internal_module_users_{params.no_of_months}_months.csv"
+    )
     return output_file
 
 
 @dataclass
 class QueryParams:
-    # input_file: str
     no_of_months: int
     workspace_name: str
 
 
 def run():
     parser = argparse.ArgumentParser()
-    # parser.add_argument(
-    #     "input_file",
-    #     type=str,
-    #     help="Filepath to the downloaded csv (see setup instructions in README.md)",
-    # )
+
     parser.add_argument(
         "-n",
         "--number_of_months",
@@ -311,7 +254,6 @@ def run():
     args = parser.parse_args()
 
     params = QueryParams(args.number_of_months, args.workspace_name)
-    # breakpoint()
     generate_output_file(params)
 
 

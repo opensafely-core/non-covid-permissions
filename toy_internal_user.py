@@ -33,7 +33,7 @@ internal_user = {
 
 # user name, email(?), workspace, repo, python file with issue, faulty import statement,
 
-output_file = "toy_test.csv"
+output_file = "output_files/toy_test.csv"
 with open(output_file, "w") as output_file:
     fieldnames = [
         "User",
@@ -62,4 +62,4 @@ with open(output_file, "w") as output_file:
                     }
                 )
 
-print("Results written to: toy_test.csv")
+print("Results written to: output_files/toy_test.csv")
