@@ -223,3 +223,9 @@ __marimo__/
 jobserver.dump
 os-tpp-database-source-of-tables.csv
 project_tables_mapping.txt
+
+# input files
+input_files/
+
+# output files
+output_files/
