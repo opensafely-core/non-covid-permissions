@@ -151,9 +151,10 @@ def get_project_and_tables(params):
     for project in get_info_from_data(params):
         repo_url = project["Repo"]
         repo_branch = project["Branch"]
+        workspace_name = [project["Workspace Name"]]
         tables = get_tables(repo_url, repo_branch)
 
-        project_tables = tables
+        project_info = {"Workspace": workspace_name, "Tables": tables}
 
         project_slug = project["Project Slug"]
 
@@ -161,15 +162,19 @@ def get_project_and_tables(params):
             item for item in project_dict.keys() if project_slug == item
         ]
 
-        if project_tables and existing_project:
-            merged_tables = project_dict[existing_project[0]] | project_tables
-            project_dict[existing_project[0]] = merged_tables
+        if project_info["Tables"] and existing_project:
+            # Add additional workspaces to the workspace list of the existing project
+            project_dict[existing_project[0]]["Workspace"].extend(
+                project_info["Workspace"]
+            )
 
-        elif not project_tables and existing_project:
+            # Extend the tables set of the existing project
+            project_dict[existing_project[0]]["Tables"].update(project_info["Tables"])
+
+        elif not project_info["Tables"] and existing_project:
             continue
         else:
-            project_dict[project_slug] = project_tables
-
+            project_dict[project_slug] = project_info
     return project_dict
 
 
@@ -241,41 +246,43 @@ def filter_tables(params):
     ehrql_tables_that_need_permission = map_ineligible_tpp_tables_to_ehrql_format(
         params.input_file
     )
-
     full_project_table_mapping = get_project_and_tables(params)
 
-    for project, tables in full_project_table_mapping.items():
+    for project, project_info in full_project_table_mapping.items():
         filtered_tables = {
-            table for table in tables if table in ehrql_tables_that_need_permission
+            table
+            for table in project_info["Tables"]
+            if table in ehrql_tables_that_need_permission
         }
 
-        full_project_table_mapping[project] = filtered_tables
+        full_project_table_mapping[project]["Tables"] = filtered_tables
 
     return {
-        project: tables
-        for (project, tables) in full_project_table_mapping.items()
-        if tables
+        project: project_info
+        for (project, project_info) in full_project_table_mapping.items()
+        if project_info["Tables"]
     }
 
 
 def generate_output_file(params):
     validate_input_file(params.input_file)
     projects_with_non_covid_restrictions = filter_tables(params)
-    output_file = f"project_permissions_{params.no_of_months}_months.csv"
-    with open(output_file, "w") as output_file:
-        fieldnames = ["Project", "Tables"]
+    output_filename = f"project_permissions_{params.no_of_months}_months.csv"
+    with open(output_filename, "w") as output_file:
+        fieldnames = ["Project", "Workspace", "Tables"]
         writer = csv.DictWriter(output_file, fieldnames=fieldnames)
         writer.writeheader()
-        for project, table in projects_with_non_covid_restrictions.items():
+        for project, project_info in projects_with_non_covid_restrictions.items():
             writer.writerow(
                 {
                     "Project": project,
-                    "Tables": table,
+                    "Workspace": project_info["Workspace"],
+                    "Tables": project_info["Tables"],
                 }
             )
 
     print(f"Results written to: project_permissions_{params.no_of_months}_months.csv")
-    return output_file
+    return output_filename
 
 
 @dataclass

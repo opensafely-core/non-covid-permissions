@@ -1,6 +1,6 @@
-Project,Tables
-incidence-and-management-of-inflammatory-rheumatic-diseases-before-during-and-after-the-covid-19-pandemic,"{'wl_clockstops', 'wl_openpathways'}"
-implications-of-metformin-for-long-covid,"{'occupation_on_covid_vaccine_record', 'sgss_covid_all_tests'}"
-investigating-events-following-covid-19,"{'occupation_on_covid_vaccine_record', 'sgss_covid_all_tests'}"
-effectiveness-and-safety-of-covid-19-treatments-for-hospitalised-patients,"{'covid_therapeutics', 'sgss_covid_all_tests'}"
-impact-and-inequalities-of-winter-pressures-in-primary-care-providing-the-evidence-base-for-mitigation-strategies,"{'occupation_on_covid_vaccine_record', 'sgss_covid_all_tests'}"
+Project,Workspace,Tables
+incidence-and-management-of-inflammatory-rheumatic-diseases-before-during-and-after-the-covid-19-pandemic,['inflammatory_rheum'],"{'wl_openpathways', 'wl_clockstops'}"
+implications-of-metformin-for-long-covid,['metformin-covid-main'],"{'sgss_covid_all_tests', 'occupation_on_covid_vaccine_record'}"
+investigating-events-following-covid-19,"['post-covid-cvd-methods-v1', 'post-covid-cvd-v2', 'post-covid-cvd-v3', 'post-covid-cvd-v4', 'post-covid-neurodegenerative-v2', 'post-covid-neurodegenerative-v3', 'post-covid-renal-v3', 'post-covid-respiratory-v3', 'post-covid-respiratory-v4']","{'sgss_covid_all_tests', 'occupation_on_covid_vaccine_record'}"
+effectiveness-and-safety-of-covid-19-treatments-for-hospitalised-patients,['tocilizumab_sarilumab'],"{'sgss_covid_all_tests', 'covid_therapeutics'}"
+impact-and-inequalities-of-winter-pressures-in-primary-care-providing-the-evidence-base-for-mitigation-strategies,"['winter-pressures-descriptive-v2', 'winter-pressures-descriptive-v3', 'winter_pressures_inequalities', 'wp-work-package-1']","{'sgss_covid_all_tests', 'occupation_on_covid_vaccine_record'}"

@@ -206,20 +206,10 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-/projects_10_months.csv
-/projects_11_months.csv
-/projects_12_months.csv
-/projects_18_months.csv
-/projects_24_months.csv
-/projects_30_months.csv
-/projects_36_months.csv
-/projects_3_months.csv
-/projects_5_months.csv
-/projects_6_months.csv
-/projects_7_months.csv
-/projects_8_months.csv
-/projects_9_months.csv
+
 
 jobserver.dump
 os-tpp-database-source-of-tables.csv
 project_tables_mapping.txt
+
+input_files/
