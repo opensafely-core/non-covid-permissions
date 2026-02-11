@@ -76,6 +76,15 @@ def get_branch_url(repo_url, repo_branch):
     return tree_url
 
 
+@dataclass
+class ExistsInJobserver:
+    files: dict = None
+
+
+# Create a class instance
+files_in_jobserver = ExistsInJobserver()
+
+
 def get_files_from_trees(repo_tree_url):
     response = requests.get(
         repo_tree_url,
@@ -83,6 +92,22 @@ def get_files_from_trees(repo_tree_url):
     )
     if response.status_code != 200:
         raise Exception(f"GitHub returned an error {response.status_code}")
+
+    # Populate the class instance with the file attributes so it can be called from the other script to check for existing file sha's. In search_code.py,
+    # we need to ensure that data that exist in jobserver is not analysed a s this will create duplicates.
+
+    # TODO Figure out how to access this from search_code.py because we don't have repo_tree_url to pass if get_files_from_trees/ExistsInJobserver is imported
+    # (or alternatively write the data out to a file but this defeats the purpose of a closed e-2-e pipeline). This also needs to happen without running this entire script.
+    # If the entire script needs to run, would adding time.sleep() and then ending the program after this function work here?
+    # TODO Handle repeated for loops
+    file_path_sha = {
+        item["path"]: item["sha"]
+        for item in response.json()["tree"]
+        if item["path"].endswith(".py")
+    }
+
+    files_in_jobserver.files = file_path_sha
+    print(files_in_jobserver)
 
     repo_py_scripts = [
         item["path"] for item in response.json()["tree"] if item["path"].endswith(".py")
