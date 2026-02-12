@@ -192,8 +192,78 @@ def get_files_from_trees(repo_tree_url):
     return list(repo_py_scripts.keys())
 
 
+# TODO write a function to handle ast parsing so it can take data from multiple sources
+def parse_python_files(data):
 
-def get_faulty_imports_from_file_content(repo_url, repo_branch, python_files_in_repo):
+    ast_tree = ast.parse(data)
+
+    tables = []
+
+    for node in ast.walk(ast_tree):
+        if isinstance(node, ast.ImportFrom):
+            if (
+                node.module
+                and node.module.startswith("ehrql.")
+                and not node.module.startswith("ehrql.t")
+            ):
+                tables.extend(alias.name for alias in node.names)
+    return tables
+
+
+# TODO write function to build final output after data parsing
+def get_faulty_imports_from_github_search_results():
+    """Example structure: The structure of the returned object should look like the below. This is because a user might be working in more than one repo.
+    github_users_with_internal_imports = {
+    "User_a": [
+        "user_a@gmail.com",
+        {
+            "Repo": "death-report",
+            "File Path": "data_def.py",
+            "Faulty Imports": "INTERVAL",
+        },
+        {
+            "Repo": "openpathology_main",
+            "File Path": "data_definition.py",
+            "Faulty Imports": "ICD10",
+        },
+    ]
+    }
+    """
+    github_users_with_internal_imports = {}
+
+    for search_result in get_valid_search_results():
+        data = search_result["File Content"]
+
+        try:
+            tables = parse_python_files(data)
+        except Exception as e:
+            file = search_result["File Path"]
+            repo = search_result["Repo"]
+            print(f"File: {file} in Repo: {repo} caused an error {e}")
+            continue
+
+        if tables:
+            name = search_result["Name"]
+            email = search_result["Email"]
+
+            # TODO: figure out the logic here. we need to group all the file paths and tables together per repo per user
+            # TODO confirm that data is not being overwritten
+            import_information = {
+                "Repo": search_result["Repo"],
+                "File Path": search_result["File Path"],
+                "Faulty Imports": tables,
+            }
+            if name in github_users_with_internal_imports.keys():
+                github_users_with_internal_imports[name].append(import_information)
+            else:
+                github_users_with_internal_imports[name] = [email, import_information]
+    print(github_users_with_internal_imports)
+    return github_users_with_internal_imports
+
+
+def get_faulty_imports_from_file_content_in_jobserver(
+    repo_url, repo_branch, python_files_in_repo
+):
     faulty_imports = set()
     python_files_with_faulty_imports = []
 
@@ -209,18 +279,8 @@ def get_faulty_imports_from_file_content(repo_url, repo_branch, python_files_in_
             raise Exception(f"GitHub returned an error {response.status_code}")
         data = response.text
 
-        ast_tree = ast.parse(data)
+        tables = parse_python_files(data)
 
-        tables = []
-
-        for node in ast.walk(ast_tree):
-            if isinstance(node, ast.ImportFrom):
-                if (
-                    node.module
-                    and node.module.startswith("ehrql.")
-                    and not node.module.startswith("ehrql.t")
-                ):
-                    tables.extend(alias.name for alias in node.names)
         if tables:
             faulty_imports.update(tables)
             python_files_with_faulty_imports.append(file)
@@ -233,7 +293,7 @@ def get_faulty_imports_from_file_content(repo_url, repo_branch, python_files_in_
 def get_imports_and_files(repo_url, repo_branch):
     workspace_tree_url = get_branch_url(repo_url, repo_branch)
     python_files_in_repo = get_files_from_trees(workspace_tree_url)
-    imports_and_files = get_faulty_imports_from_file_content(
+    imports_and_files = get_faulty_imports_from_file_content_in_jobserver(
         repo_url, repo_branch, python_files_in_repo
     )
     return imports_and_files
@@ -295,7 +355,9 @@ def get_users_and_import_info(params):
 
 def generate_output_file(params):
     user_dict = get_users_and_import_info(params)
-    output_file = f"output_files/internal_module_users_{params.no_of_months}_months.csv"
+    output_file = (
+        f"output_files/jobserver_internal_module_users_{params.no_of_months}_months.csv"
+    )
     with open(output_file, "w") as output_csv:
         fieldnames = [
             "User",
@@ -325,7 +387,7 @@ def generate_output_file(params):
                     )
 
     print(
-        f"Results written to: output_files/internal_module_users_{params.no_of_months}_months.csv"
+        f"Results written to: output_files/jobserver_internal_module_users_{params.no_of_months}_months.csv"
     )
     return output_file
 
@@ -373,7 +435,7 @@ def run():
 
     # Run GitHub SearchAPI pipeline
     # TODO: add main code here
-    get_valid_search_results(params)  # tmp
+    get_faulty_imports_from_github_search_results()  # tmp
 
 
 if __name__ == "__main__":
