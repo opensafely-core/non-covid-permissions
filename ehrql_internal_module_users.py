@@ -10,16 +10,30 @@ import requests
 from dotenv import load_dotenv
 from psycopg2.extras import RealDictCursor
 from dataclasses import dataclass
+from github import Github, Auth
+from datetime import datetime, timedelta, timezone
+from collections import Counter, defaultdict
 
 load_dotenv()
 
 DATABASE_CONNECTION_URL = os.getenv(
     "DATABASE_URL", "postgres://user:pass@localhost:6543/jobserver"
 )
-
 API_TOKEN = os.getenv("GH_ACCESS_TOKEN")
+auth = Auth.Token(API_TOKEN)
 
+
+g = Github(auth=auth)
 conn = pg.connect(DATABASE_CONNECTION_URL)
+
+# Checks within the last 9 months
+start_time_naive = datetime.now() - timedelta(days=270)  # no timezone info
+
+# Convert to timezone aware, the format in which git commit dates are stored. Without converting, we cannot compare with commit dates.
+start_time = start_time_naive.replace(tzinfo=timezone.utc)
+
+# This is populated by the jobserver pipeline and used by the GitHub SearchAPI pipeline
+jobserver_sha = set()
 
 
 # To get data that exists in the joserver database
@@ -38,6 +52,89 @@ def get_db_query(params):
         ehrql_users += f"AND w.name = '{params.workspace_name}'"
 
     return ehrql_users
+
+
+# Build GitHub search API query
+def get_search_query_results(params):
+    query = 'org:opensafely language:python "from ehrql"'
+
+    if params and params.repo_name:
+        query = f'repo:opensafely/{params.repo_name} language:python "from ehrql"'
+
+    # search_code uses the Search API
+    return g.search_code(query)
+
+
+# To get data (python files) that doesn't exist in the jobserver database
+def get_valid_search_results(params=None):
+    """Example structure:
+    valid_search_results = [
+        {
+            "Name": "John Doe",
+            "Email": "johndoe@gmail.com",
+            "Repo" "repo_a",
+            "File Path": "analysis/dataset_definition_1.py",
+            "File Content": "from ehrql.tpp import....\n rest of file content",
+        },
+        {
+            "Name": "John Doe",
+            "Email": "johndoe@gmail.com",
+            "Repo" "repo_b",
+            "File Path": "analysis/dataset_definition_cohort.py",
+            "File Content": "from ehrql import....\n rest of file content",
+        },
+        {
+            "Name": "Alexa Unix",
+            "Email": "alexau@outlook.com",
+            "Repo" "repo_c",
+            "File Path": "analysis/dataset_definition_test.py",
+            "File Content": "from ehrql.tpp import....\n rest of file content",
+        },
+    ]"""
+
+    valid_search_results = []
+    for result in get_search_query_results(params):
+        # breakpoint()
+        file_exists_jobserver = result.sha in jobserver_sha
+
+        if file_exists_jobserver:
+            continue
+
+        repo = result.repository
+
+        # Skip if repo has not been pushed in the last 9 months
+        if repo.pushed_at < start_time:
+            continue
+
+        # Skip if latest commit for file path is too old
+        commits = repo.get_commits(path=result.path)
+        if commits[0].commit.author.date < start_time:
+            continue
+
+        # We want to use the most frequent commit author in this script's generated data because there are instances where the latest
+        # commits were not made by the main researcher. See opensafely/post-covid-renal as an example
+        authors_in_commits = [commit.commit.author.name for commit in commits]
+        author_count = Counter(authors_in_commits)
+        main_author = max(author_count, key=author_count.get)
+
+        # Get main authors email. Just a single match is needed
+        email = {
+            commit.commit.author.email
+            for commit in commits
+            if commit.commit.author.name == main_author
+        }
+
+        result_dict = defaultdict(str)
+        result_dict["Name"] = main_author
+        result_dict["Email"] = email
+        result_dict["Repo"] = result.repository.name
+        result_dict["File Path"] = result.path
+        result_dict["File Content"] = result.decoded_content.decode("utf-8")
+
+        valid_search_results.append(result_dict)
+
+    # here we want to return a list of objects which will have callable data in another function
+    return valid_search_results
 
 
 def read_data(query):
@@ -75,9 +172,6 @@ def get_branch_url(repo_url, repo_branch):
         f"https://api.github.com/repos/{org_repo}/git/trees/{tree_sha}?recursive=true"
     )
     return tree_url
-
-
-jobserver_sha = set()
 
 
 def get_files_from_trees(repo_tree_url):
@@ -152,7 +246,7 @@ def get_info_from_data(params):
 
 # Dictionary containing users that have imported from internal ehrql modules
 def get_users_and_import_info(params):
-    """Example structure:
+    """Example structure: The structure of the returned object should look like the below. This is because a user might be working in more than one workspace.
     users_with_internal_imports = {
     "User_a": [
         "user_a@gmail.com",
@@ -240,6 +334,7 @@ def generate_output_file(params):
 class QueryParams:
     no_of_months: int
     workspace_name: str
+    repo_name: str
 
 
 def run():
@@ -258,12 +353,27 @@ def run():
         "--workspace_name",
         type=str,
         nargs="?",
-        help="Workspace name for single workspace to analyse",
+        help="Workspace name for single workspace to analyse. Use this for the jobserver pipeline",
+    )
+    parser.add_argument(
+        "-r",
+        "--repo_name",
+        type=str,
+        nargs="?",
+        help="To analyse a single repo. Use this for the Search API pipeline",
     )
     args = parser.parse_args()
 
-    params = QueryParams(args.number_of_months, args.workspace_name)
+    params = QueryParams(args.number_of_months, args.workspace_name, args.repo_name)
+
+    # Run jobserver data pipeline - this runs first to populate the 'jobserver_sha' object
     generate_output_file(params)
+
+    # print(jobserver_sha)
+
+    # Run GitHub SearchAPI pipeline
+    # TODO: add main code here
+    get_valid_search_results(params)  # tmp
 
 
 if __name__ == "__main__":
