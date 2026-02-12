@@ -22,6 +22,7 @@ API_TOKEN = os.getenv("GH_ACCESS_TOKEN")
 conn = pg.connect(DATABASE_CONNECTION_URL)
 
 
+# To get data that exists in the joserver database
 def get_db_query(params):
     ehrql_users = f"""
                 SELECT DISTINCT u.fullname AS "User Name", u.email AS "Email", w.name AS "Workspace Name", w.branch AS "Branch", r.url AS "Repo"
@@ -76,13 +77,7 @@ def get_branch_url(repo_url, repo_branch):
     return tree_url
 
 
-@dataclass
-class ExistsInJobserver:
-    files: dict = None
-
-
-# Create a class instance
-files_in_jobserver = ExistsInJobserver()
+jobserver_sha = set()
 
 
 def get_files_from_trees(repo_tree_url):
@@ -93,26 +88,15 @@ def get_files_from_trees(repo_tree_url):
     if response.status_code != 200:
         raise Exception(f"GitHub returned an error {response.status_code}")
 
-    # Populate the class instance with the file attributes so it can be called from the other script to check for existing file sha's. In search_code.py,
-    # we need to ensure that data that exist in jobserver is not analysed a s this will create duplicates.
-
-    # TODO Figure out how to access this from search_code.py because we don't have repo_tree_url to pass if get_files_from_trees/ExistsInJobserver is imported
-    # (or alternatively write the data out to a file but this defeats the purpose of a closed e-2-e pipeline). This also needs to happen without running this entire script.
-    # If the entire script needs to run, would adding time.sleep() and then ending the program after this function work here?
-    # TODO Handle repeated for loops
-    file_path_sha = {
+    repo_py_scripts = {
         item["path"]: item["sha"]
         for item in response.json()["tree"]
         if item["path"].endswith(".py")
     }
+    jobserver_sha.update(repo_py_scripts.values())
 
-    files_in_jobserver.files = file_path_sha
-    print(files_in_jobserver)
+    return list(repo_py_scripts.keys())
 
-    repo_py_scripts = [
-        item["path"] for item in response.json()["tree"] if item["path"].endswith(".py")
-    ]
-    return repo_py_scripts
 
 
 def get_faulty_imports_from_file_content(repo_url, repo_branch, python_files_in_repo):
@@ -218,7 +202,7 @@ def get_users_and_import_info(params):
 def generate_output_file(params):
     user_dict = get_users_and_import_info(params)
     output_file = f"output_files/internal_module_users_{params.no_of_months}_months.csv"
-    with open(output_file, "w") as output_file:
+    with open(output_file, "w") as output_csv:
         fieldnames = [
             "User",
             "Email",
@@ -226,7 +210,7 @@ def generate_output_file(params):
             "Python File with Issue",
             "Faulty Imports",
         ]
-        writer = csv.DictWriter(output_file, fieldnames=fieldnames)
+        writer = csv.DictWriter(output_csv, fieldnames=fieldnames)
         writer.writeheader()
         for name, import_info in user_dict.items():
             for item in import_info:
