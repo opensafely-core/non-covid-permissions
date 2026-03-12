@@ -1,44 +1,21 @@
-# Non-COVID Permissions
-This repository contains a script to extract permissions from ehrQL analysis code. 
+# About the repo
+This repository contains a collection of scripts created for various use cases. They are run either once or on an ad hoc basis as needed.
+
+Most of the scripts query the jobserver database and access the GitHub API. 
+
+## Use cases
+- [Extracting dataset permissions from analysis code](dataset-permissions)
+- [Identifying users importing and using internal ehrQL modules](internal-ehrql-module-usage)
+- [Identifying instances where reverse division operations have been used](reverse-division-usage)
 
 ## Set up & Installation
 Follow the instructions in job-server to get a copy of the database and get a docker container running locally for executing queries [here](https://github.com/opensafely-core/job-server/blob/main/DEVELOPERS.md#restoring-backups). This will enable you to run the script from this directory. 
 
-## Setting up your development environment
+### Setting up your development environment
 Create a .env file using `just devenv` 
 
-## Accessing the GitHub API
+### Accessing the GitHub API
 Parts of this script requires access to the GitHub API. In Github, generate a PAT. Copy the token from GitHub and in the .env file created, replace the placeholder token for GH_ACCESS_TOKEN, with the copied token.
 
-## Getting the TPP tables data
-Members of datalab.org have access to the data in the shared drive [here](https://docs.google.com/spreadsheets/d/1zT5YKjOap0fzSwGztQwM9y2JeJ3MnMYsGerb1_qYw3s/edit?gid=0#gid=0)
-
-Downlad a copy to your local machine in csv format. Save it in an easily accesible directory
-
-## Running the script
-
-### Basic usage
-```sh
-python3 permissions_script.py <path-to-csv-file>
-```
-
-By default the script runs using data from the last six months 
-
-### Specify a custom time period
-```sh
-python3 permissions_script.py <path-to-csv-file> -n <number-of-months>
-``` 
-
-`<number-of-months>` is an integer
-
-### Get the tables for a single workspace
-```sh
-python3 permissions_script.py <path-to-csv-file> -n <number-of-months> -w <workspace-name>
-``` 
-
-`<workspace-name>` gotten from job-server
-
-### Get help running the script
-```sh
-python3 permissions_script.py -h
-```
+## Running the scripts
+To run a script for a specific use case, navigate to the directory and follow the run instructions in the DEVELOPERS.md for that directory. 

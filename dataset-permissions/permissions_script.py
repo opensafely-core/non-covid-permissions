@@ -268,7 +268,7 @@ def generate_output_file(params):
     validate_input_file(params.input_file)
     projects_with_non_covid_restrictions = filter_tables(params)
     output_filename = (
-        f"output_files/project_permissions_{params.no_of_months}_months.csv"
+        f"../output_files/project_permissions_{params.no_of_months}_months.csv"
     )
     with open(output_filename, "w") as output_file:
         fieldnames = ["Project", "Workspace", "Tables"]
@@ -284,7 +284,7 @@ def generate_output_file(params):
             )
 
     print(
-        f"Results written to: output_files/project_permissions_{params.no_of_months}_months.csv"
+        f"Results written to: ../output_files/project_permissions_{params.no_of_months}_months.csv"
     )
     return output_filename
 

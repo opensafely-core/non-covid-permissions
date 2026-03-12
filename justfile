@@ -19,6 +19,9 @@ _dotenv:
 devenv: _dotenv
     uv pip install --upgrade -r requirements.txt
 
+    # Create private directories for monitoring input and output data
+    mkdir -p input_files output_files
+
 format *args:
     uv run ruff format --diff --quiet "$@"
 
