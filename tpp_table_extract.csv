@@ -37,10 +37,10 @@ buildinfo,yes
 codecountindicator,yes
 latestbuildtime,yes
 opensafelyschemainformation,yes
-household,presumably
-householdmember,presumably
-msoa_populationestimates_2019,presumably
-potentialcarehomeaddress,presumably
+household,yes
+householdmember,yes
+msoa_populationestimates_2019,yes
+potentialcarehomeaddress,yes
 apcs_archived,-
 apcs_archived_old,-
 apcs_cost_archived,-

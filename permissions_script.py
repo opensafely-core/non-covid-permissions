@@ -267,7 +267,9 @@ def filter_tables(params):
 def generate_output_file(params):
     validate_input_file(params.input_file)
     projects_with_non_covid_restrictions = filter_tables(params)
-    output_filename = f"project_permissions_{params.no_of_months}_months.csv"
+    output_filename = (
+        f"output_files/project_permissions_{params.no_of_months}_months.csv"
+    )
     with open(output_filename, "w") as output_file:
         fieldnames = ["Project", "Workspace", "Tables"]
         writer = csv.DictWriter(output_file, fieldnames=fieldnames)
@@ -281,7 +283,9 @@ def generate_output_file(params):
                 }
             )
 
-    print(f"Results written to: project_permissions_{params.no_of_months}_months.csv")
+    print(
+        f"Results written to: output_files/project_permissions_{params.no_of_months}_months.csv"
+    )
     return output_filename
 
 
