@@ -6,13 +6,13 @@ import argparse
 import csv
 
 import psycopg2 as pg
+from psycopg2.extras import RealDictCursor
 import requests
 from dotenv import load_dotenv
-from psycopg2.extras import RealDictCursor
 from dataclasses import dataclass
 from github import Github, Auth
 from datetime import datetime, timedelta, timezone
-from collections import Counter, defaultdict
+
 
 load_dotenv()
 
@@ -24,7 +24,7 @@ auth = Auth.Token(API_TOKEN)
 
 
 g = Github(auth=auth)
-conn = pg.connect(DATABASE_CONNECTION_URL)
+
 
 # Checks within the last 9 months
 start_time_naive = datetime.now() - timedelta(days=270)  # no timezone info
@@ -33,10 +33,14 @@ start_time_naive = datetime.now() - timedelta(days=270)  # no timezone info
 start_time = start_time_naive.replace(tzinfo=timezone.utc)
 
 # This is populated by the jobserver pipeline and used by the GitHub SearchAPI pipeline
-jobserver_sha = set()
+_jobserver_sha = set()
 
+@dataclass
+class QueryParams:
+    no_of_months: int
+    workspace_name: str
 
-# To get data that exists in the joserver database
+# To get data that exists in the jobserver database
 def get_db_query(params):
     ehrql_users = f"""
                 SELECT DISTINCT u.fullname AS "User Name", u.email AS "Email", w.name AS "Workspace Name", w.branch AS "Branch", r.url AS "Repo"
@@ -54,91 +58,9 @@ def get_db_query(params):
     return ehrql_users
 
 
-# Build GitHub search API query
-def get_search_query_results(params):
-    query = 'org:opensafely language:python "from ehrql"'
-
-    if params and params.repo_name:
-        query = f'repo:opensafely/{params.repo_name} language:python "from ehrql"'
-
-    # search_code uses the Search API
-    return g.search_code(query)
-
-
-# To get data (python files) that doesn't exist in the jobserver database
-def get_valid_search_results(params=None):
-    """Example structure:
-    valid_search_results = [
-        {
-            "Name": "John Doe",
-            "Email": "johndoe@gmail.com",
-            "Repo" "repo_a",
-            "File Path": "analysis/dataset_definition_1.py",
-            "File Content": "from ehrql.tpp import....\n rest of file content",
-        },
-        {
-            "Name": "John Doe",
-            "Email": "johndoe@gmail.com",
-            "Repo" "repo_b",
-            "File Path": "analysis/dataset_definition_cohort.py",
-            "File Content": "from ehrql import....\n rest of file content",
-        },
-        {
-            "Name": "Alexa Unix",
-            "Email": "alexau@outlook.com",
-            "Repo" "repo_c",
-            "File Path": "analysis/dataset_definition_test.py",
-            "File Content": "from ehrql.tpp import....\n rest of file content",
-        },
-    ]"""
-
-    valid_search_results = []
-    for result in get_search_query_results(params):
-        # breakpoint()
-        file_exists_jobserver = result.sha in jobserver_sha
-
-        if file_exists_jobserver:
-            continue
-
-        repo = result.repository
-
-        # Skip if repo has not been pushed in the last 9 months
-        if repo.pushed_at < start_time:
-            continue
-
-        # Skip if latest commit for file path is too old
-        commits = repo.get_commits(path=result.path)
-        if commits[0].commit.author.date < start_time:
-            continue
-
-        # We want to use the most frequent commit author in this script's generated data because there are instances where the latest
-        # commits were not made by the main researcher. See opensafely/post-covid-renal as an example
-        authors_in_commits = [commit.commit.author.name for commit in commits]
-        author_count = Counter(authors_in_commits)
-        main_author = max(author_count, key=author_count.get)
-
-        # Get main authors email. Just a single match is needed
-        email = {
-            commit.commit.author.email
-            for commit in commits
-            if commit.commit.author.name == main_author
-        }
-
-        result_dict = defaultdict(str)
-        result_dict["Name"] = main_author
-        result_dict["Email"] = email
-        result_dict["Repo"] = result.repository.name
-        result_dict["File Path"] = result.path
-        result_dict["File Content"] = result.decoded_content.decode("utf-8")
-
-        valid_search_results.append(result_dict)
-
-    # here we want to return a list of objects which will have callable data in another function
-    return valid_search_results
-
-
 def read_data(query):
     # Use ReadDictCursor to return the result of the query as a dictionary
+    conn = pg.connect(DATABASE_CONNECTION_URL)
     cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute(query)
     user_info = cursor.fetchall()
@@ -182,17 +104,35 @@ def get_files_from_trees(repo_tree_url):
     if response.status_code != 200:
         raise Exception(f"GitHub returned an error {response.status_code}")
 
-    repo_py_scripts = {
+    python_file_and_shas = {
         item["path"]: item["sha"]
         for item in response.json()["tree"]
         if item["path"].endswith(".py")
     }
-    jobserver_sha.update(repo_py_scripts.values())
 
-    return list(repo_py_scripts.keys())
+    _jobserver_sha.update(python_file_and_shas.values())
+
+    # Return a list of python files
+    return list(python_file_and_shas.keys())
 
 
-# TODO write a function to handle ast parsing so it can take data from multiple sources
+# TODO: test
+def jobserver_sha_to_file():
+    # TODO: WRITE into txt file. Check if this data gets overwritten
+    if not _jobserver_sha:
+        print("Unpopulated list")
+        return
+
+    file_path = "output_files/jobserver_file_shas.txt"
+    with open(file_path, "w") as jf:
+        for sha in _jobserver_sha:
+            jf.write(f"{sha}\n")
+    print(
+        f"File SHAs written to: {file_path}"
+    )
+    return file_path
+
+
 def parse_python_files(data):
 
     ast_tree = ast.parse(data)
@@ -208,57 +148,6 @@ def parse_python_files(data):
             ):
                 tables.extend(alias.name for alias in node.names)
     return tables
-
-
-# TODO write function to build final output after data parsing
-def get_faulty_imports_from_github_search_results():
-    """Example structure: The structure of the returned object should look like the below. This is because a user might be working in more than one repo.
-    github_users_with_internal_imports = {
-    "User_a": [
-        "user_a@gmail.com",
-        {
-            "Repo": "death-report",
-            "File Path": "data_def.py",
-            "Faulty Imports": "INTERVAL",
-        },
-        {
-            "Repo": "openpathology_main",
-            "File Path": "data_definition.py",
-            "Faulty Imports": "ICD10",
-        },
-    ]
-    }
-    """
-    github_users_with_internal_imports = {}
-
-    for search_result in get_valid_search_results():
-        data = search_result["File Content"]
-
-        try:
-            tables = parse_python_files(data)
-        except Exception as e:
-            file = search_result["File Path"]
-            repo = search_result["Repo"]
-            print(f"File: {file} in Repo: {repo} caused an error {e}")
-            continue
-
-        if tables:
-            name = search_result["Name"]
-            email = search_result["Email"]
-
-            # TODO: figure out the logic here. we need to group all the file paths and tables together per repo per user
-            # TODO confirm that data is not being overwritten
-            import_information = {
-                "Repo": search_result["Repo"],
-                "File Path": search_result["File Path"],
-                "Faulty Imports": tables,
-            }
-            if name in github_users_with_internal_imports.keys():
-                github_users_with_internal_imports[name].append(import_information)
-            else:
-                github_users_with_internal_imports[name] = [email, import_information]
-    print(github_users_with_internal_imports)
-    return github_users_with_internal_imports
 
 
 def get_faulty_imports_from_file_content_in_jobserver(
@@ -392,13 +281,6 @@ def generate_output_file(params):
     return output_file
 
 
-@dataclass
-class QueryParams:
-    no_of_months: int
-    workspace_name: str
-    repo_name: str
-
-
 def run():
     parser = argparse.ArgumentParser()
 
@@ -415,27 +297,18 @@ def run():
         "--workspace_name",
         type=str,
         nargs="?",
-        help="Workspace name for single workspace to analyse. Use this for the jobserver pipeline",
+        help="Workspace name for single workspace to analyse",
     )
-    parser.add_argument(
-        "-r",
-        "--repo_name",
-        type=str,
-        nargs="?",
-        help="To analyse a single repo. Use this for the Search API pipeline",
-    )
+
     args = parser.parse_args()
 
-    params = QueryParams(args.number_of_months, args.workspace_name, args.repo_name)
+    params = QueryParams(args.number_of_months, args.workspace_name)
 
-    # Run jobserver data pipeline - this runs first to populate the 'jobserver_sha' object
+    # Run jobserver data pipeline - this runs first to populate the '_jobserver_sha' object
     generate_output_file(params)
 
-    # print(jobserver_sha)
-
-    # Run GitHub SearchAPI pipeline
-    # TODO: add main code here
-    get_faulty_imports_from_github_search_results()  # tmp
+    # Persist jobserver file sha's which will be used to for the search pipeline analysis
+    jobserver_sha_to_file()
 
 
 if __name__ == "__main__":
