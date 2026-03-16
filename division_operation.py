@@ -124,24 +124,23 @@ def parse_python_files(data):
 
     ast_tree = ast.parse(data)
 
-    tables = []
+    division_usages = []
 
     for node in ast.walk(ast_tree):
-        if isinstance(node, ast.ImportFrom):
-            if (
-                node.module
-                and node.module.startswith("ehrql.")
-                and not node.module.startswith("ehrql.t")
-            ):
-                tables.extend(alias.name for alias in node.names)
-    return tables
+        if isinstance(node, ast.BinOp):
+            if isinstance(node.op, ast.FloorDiv):
+                division_usages.append(("FloorDiv (//)", node.lineno))
+            elif isinstance(node.op, ast.Div):
+                division_usages.append(("TrueDiv (/)", node.lineno))
+
+    return division_usages
 
 
-def get_faulty_imports_from_file_content_in_jobserver(
+def get_division_usage_from_file_content_in_jobserver(
     repo_url, repo_branch, python_files_in_repo
 ):
-    faulty_imports = set()
-    python_files_with_faulty_imports = []
+    division_usages = []
+    python_files_with_divisions = []
 
     for file in python_files_in_repo:
         repo = get_org_repo_name(repo_url)
@@ -156,7 +155,7 @@ def get_faulty_imports_from_file_content_in_jobserver(
         data = response.text
 
         try:
-            tables = parse_python_files(data)
+            usages = parse_python_files(data)
         except SyntaxError as e:
             print(
                 f"Skipping file: '{file}' in repo: '{repo}' — invalid Python syntax: {e}"
@@ -166,26 +165,26 @@ def get_faulty_imports_from_file_content_in_jobserver(
             print(f"Skipping file: '{file}' in repo: '{repo}' — unexpected error: {e}")
             continue
 
-        if tables:
-            faulty_imports.update(tables)
-            python_files_with_faulty_imports.append(file)
+        if usages:
+            division_usages.extend(f"{op} at line {line}" for op, line in usages)
+            python_files_with_divisions.append(file)
 
-    faulty_imports_str = ", ".join(faulty_imports)
-    files_str = ", ".join(python_files_with_faulty_imports)
-    return faulty_imports_str, files_str
+    divisions_str = ", ".join(division_usages)
+    files_str = ", ".join(python_files_with_divisions)
+    return divisions_str, files_str
 
 
-def get_imports_and_files(repo_url, repo_branch):
+def get_division_operation_usage_and_files(repo_url, repo_branch):
     workspace_tree_url = get_branch_url(repo_url, repo_branch)
 
     if workspace_tree_url is None:
         return None, None
 
     python_files_in_repo = get_files_from_trees(workspace_tree_url)
-    imports_and_files = get_faulty_imports_from_file_content_in_jobserver(
+    division_usage_and_files = get_division_usage_from_file_content_in_jobserver(
         repo_url, repo_branch, python_files_in_repo
     )
-    return imports_and_files
+    return division_usage_and_files
 
 
 def get_info_from_data(params):
@@ -193,94 +192,94 @@ def get_info_from_data(params):
     yield from read_data(query)
 
 
-# Dictionary containing users that have imported from internal ehrql modules
-def get_users_and_import_info(params):
+# Dictionary containing users that have used division operations
+def get_users_and_division_usage(params):
     """Example structure: The structure of the returned object should look like the below. This is because a user might be working in more than one workspace.
-    users_with_internal_imports = {
+    users_with_division_usage = {
     "User_a": [
         "user_a@gmail.com",
         {
             "Workspace": "death-report",
             "File Path": "data_def.py",
-            "Faulty Imports": "INTERVAL",
+            "Division Operations": "TrueDiv (/) at line 258",
         },
         {
             "Workspace": "openpathology_main",
             "File Path": "data_definition.py",
-            "Faulty Imports": "ICD10",
+            "Division Operations": "FloorDiv (//) at line 46",
         },
     ]
     }
     """
-    users_with_internal_imports = {}
+    users_with_division_usage = {}
     for users in get_info_from_data(params):
         username = users["User Name"]
         email = users["Email"]
         repo_url = users["Repo"]
         repo_branch = users["Branch"]
         workspace_name = users["Workspace Name"]
-        imported_tables, files_with_imports = get_imports_and_files(
+        division_operations, files_with_usage = get_division_operation_usage_and_files(
             repo_url, repo_branch
         )
 
-        if imported_tables is None:
+        if division_operations is None:
             continue
-        imports_from_wrong_location = imported_tables
-        files_containing_wrong_imports = files_with_imports
+        division_operation_usage = division_operations
+        files_containing_division_operations = files_with_usage
 
-        if not files_containing_wrong_imports:
+        if not files_containing_division_operations:
             continue
 
-        import_information = {
+        division_usage_information = {
             "Workspace": workspace_name,
-            "File Path": files_containing_wrong_imports,
-            "Faulty Imports": imports_from_wrong_location,
+            "File Path": files_containing_division_operations,
+            "Division Operations": division_operation_usage,
         }
 
-        if username in users_with_internal_imports.keys():
-            users_with_internal_imports[username].append(import_information)
+        if username in users_with_division_usage.keys():
+            users_with_division_usage[username].append(division_usage_information)
         else:
-            users_with_internal_imports[username] = [email, import_information]
+            users_with_division_usage[username] = [email, division_usage_information]
 
-    return users_with_internal_imports
+    return users_with_division_usage
 
 
 def generate_output_file(params):
-    user_dict = get_users_and_import_info(params)
-    output_file = (
-        f"output_files/jobserver_internal_module_users_{params.no_of_months}_months.csv"
-    )
+    user_dict = get_users_and_division_usage(params)
+    output_file = f"output_files/non_ehrql_filtered_division_operation_users_{params.no_of_months}_months.csv"
+
     with open(output_file, "w") as output_csv:
         fieldnames = [
             "User",
             "Email",
             "Workspace",
             "Python File with Issue",
-            "Faulty Imports",
+            "Division Operations Found",
         ]
         writer = csv.DictWriter(output_csv, fieldnames=fieldnames)
         writer.writeheader()
-        for name, import_info in user_dict.items():
-            for item in import_info:
+        for name, division_operation_info in user_dict.items():
+            for item in division_operation_info:
                 if not isinstance(item, dict):
                     email = item
                 else:
                     workspace = item["Workspace"]
                     file = item["File Path"]
-                    imports = item["Faulty Imports"]
+                    operations = item["Division Operations"]
                     writer.writerow(
                         {
                             "User": name,
                             "Email": email,
                             "Workspace": workspace,
                             "Python File with Issue": file,
-                            "Faulty Imports": imports,
+                            "Division Operations Found": operations,
                         }
                     )
 
     print(
-        f"Results written to: output_files/jobserver_internal_module_users_{params.no_of_months}_months.csv"
+        f"Results written to: output_files/non_ehrql_filtered_division_operation_users_{params.no_of_months}_months.csv"
     )
+
     return output_file
 
 
@@ -292,7 +291,7 @@ def run():
         "--number_of_months",
         type=int,
         nargs="?",
-        default=9,
+        default=38,
         help="Last N months to query the database which starts from the first day of the earliest month",
     )
 
