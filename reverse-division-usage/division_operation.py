@@ -24,6 +24,7 @@ auth = Auth.Token(API_TOKEN)
 
 g = Github(auth=auth)
 
+SKIPPED_BRANCHES_FILE = "../output_files/skipped_branches.csv"
 
 @dataclass
 class QueryParams:
@@ -58,9 +59,6 @@ def get_org_repo_name(repo_url) -> str:
     url_segments = repo_url.split("/")
     repo_name = "/".join(url_segments[3:])
     return repo_name
-
-
-SKIPPED_BRANCHES_FILE = "output_files/skipped_branches.csv"
 
 
 def log_skipped_branch(repo, branch):
@@ -250,7 +248,7 @@ def get_users_and_division_usage(params):
 
 def generate_output_file(params):
     user_dict = get_users_and_division_usage(params)
-    output_file = f"output_files/constant_ehrql_filtered_division_operation_users_{params.no_of_months}_months.csv"
+    output_file = f"../output_files/constant_ehrql_filtered_division_operation_users_{params.no_of_months}_months.csv"
 
     with open(output_file, "w") as output_csv:
         fieldnames = [
@@ -281,7 +279,7 @@ def generate_output_file(params):
                     )
 
     print(
-        f"Results written to: output_files/constant_ehrql_filtered_division_operation_users_{params.no_of_months}_months.csv"
+        f"Results written to: ../output_files/constant_ehrql_filtered_division_operation_users_{params.no_of_months}_months.csv"
     )
 
     return output_file
