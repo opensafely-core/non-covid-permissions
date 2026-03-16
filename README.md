@@ -18,4 +18,4 @@ Create a .env file using `just devenv`
 Parts of this script requires access to the GitHub API. In Github, generate a PAT. Copy the token from GitHub and in the .env file created, replace the placeholder token for GH_ACCESS_TOKEN, with the copied token.
 
 ## Running the scripts
-To run a script for a specific use case, navigate to the directory and follow the run instructions in the DEVELOPERS.md for that directory. 
+To run a script for a specific use case, navigate to the directory in your CLI and follow the run instructions in the DEVELOPERS.md for that directory. 
