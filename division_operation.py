@@ -121,6 +121,9 @@ def get_files_from_trees(repo_tree_url):
 
 
 def parse_python_files(data):
+    # Only parse files that reference ehrql
+    if "ehrql" not in data:
+        return []
 
     ast_tree = ast.parse(data)
 
@@ -246,7 +249,7 @@ def get_users_and_division_usage(params):
 
 def generate_output_file(params):
     user_dict = get_users_and_division_usage(params)
-    output_file = f"output_files/non_ehrql_filtered_division_operation_users_{params.no_of_months}_months.csv"
+    output_file = f"output_files/ehrql_filtered_division_operation_users_{params.no_of_months}_months.csv"
 
     with open(output_file, "w") as output_csv:
         fieldnames = [
@@ -277,7 +280,7 @@ def generate_output_file(params):
                     )
 
     print(
-        f"Results written to: output_files/non_ehrql_filtered_division_operation_users_{params.no_of_months}_months.csv"
+        f"Results written to: output_files/ehrql_filtered_division_operation_users_{params.no_of_months}_months.csv"
     )
 
     return output_file
