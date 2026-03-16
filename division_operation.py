@@ -122,8 +122,8 @@ def get_files_from_trees(repo_tree_url):
 
 def parse_python_files(data):
     # Only parse files that reference ehrql
-    if "ehrql" not in data:
-        return []
+    # if "ehrql" not in data:
+    #     return []
 
     ast_tree = ast.parse(data)
 
@@ -131,10 +131,11 @@ def parse_python_files(data):
 
     for node in ast.walk(ast_tree):
         if isinstance(node, ast.BinOp):
-            if isinstance(node.op, ast.FloorDiv):
-                division_usages.append(("FloorDiv (//)", node.lineno))
-            elif isinstance(node.op, ast.Div):
-                division_usages.append(("TrueDiv (/)", node.lineno))
+            if isinstance(node.op, (ast.FloorDiv, ast.Div)):
+                # Keep only instances where left-hand side is a numeric constant e.g. 4 / some_variable
+                if isinstance(node.left, ast.Constant) and isinstance(node.left.value, (int, float)):
+                    operation_name = "FloorDiv (//)" if isinstance(node.op, ast.FloorDiv) else "TrueDiv (/)"
+                    division_usages.append((operation_name, node.lineno))
 
     return division_usages
 
@@ -195,7 +196,7 @@ def get_info_from_data(params):
     yield from read_data(query)
 
 
-# Dictionary containing users that have used division operations
+# Dictionary containing users that have used reverse division operations
 def get_users_and_division_usage(params):
     """Example structure: The structure of the returned object should look like the below. This is because a user might be working in more than one workspace.
     users_with_division_usage = {
@@ -249,7 +250,7 @@ def get_users_and_division_usage(params):
 
 def generate_output_file(params):
     user_dict = get_users_and_division_usage(params)
-    output_file = f"output_files/ehrql_filtered_division_operation_users_{params.no_of_months}_months.csv"
+    output_file = f"output_files/constant_division_operation_users_{params.no_of_months}_months.csv"
 
     with open(output_file, "w") as output_csv:
         fieldnames = [
@@ -280,7 +281,7 @@ def generate_output_file(params):
                     )
 
     print(
-        f"Results written to: output_files/ehrql_filtered_division_operation_users_{params.no_of_months}_months.csv"
+        f"Results written to: output_files/constant_division_operation_users_{params.no_of_months}_months.csv"
     )
 
     return output_file
